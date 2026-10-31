@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jewish Island – ניהול גישה</title>
+<meta name="theme-color" content="#06101f">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Suez+One&family=Rubik:wght@400;500;700&display=swap">
+<style>
+  :root{--bg:#06101f;--card:#FBF1DA;--ink:#3A2414;--soft:#86684C;--gold:#EDBB45;--gold-hi:#FFE58A;--copper:#d9825b;--copper-d:#b0603e;--ok:#2E7D56;--no:#B3373A;--line:#E2CFA6}
+  html,body{margin:0;background:var(--bg) radial-gradient(ellipse at 50% -10%,rgba(237,187,69,.18),transparent 55%);color:var(--card);min-height:100%}
+  body{font:16px/1.55 Rubik,system-ui,sans-serif;padding:24px 16px 48px}
+  main{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header img{width:56px;height:56px;border-radius:14px}
+  h1{margin:0;font:400 30px/1.1 "Suez One",Georgia,serif;color:var(--gold-hi)}
+  header a{margin-inline-start:auto;color:var(--card);font-size:14px}
+  section{background:var(--card);color:var(--ink);border:3px solid var(--gold);border-radius:16px;padding:16px 18px;box-shadow:0 6px 0 #2a0a15}
+  h2{margin:0 0 10px;font:400 21px "Suez One",Georgia,serif;color:#5A1A2C}
+  .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+  .row:first-of-type{border-top:0}
+  .who{flex:1;min-width:180px}.who b{display:block}.who span{color:var(--soft);font-size:14px;direction:ltr;display:inline-block}
+  .tag{font-size:12px;font-weight:700;color:#fff;background:#5A1A2C;border-radius:999px;padding:2px 9px}
+  button{font:600 14px Rubik,sans-serif;border-radius:999px;padding:7px 16px;cursor:pointer;border:2px solid transparent}
+  .ok{background:var(--ok);color:#fff}.no{background:#fff;color:var(--no);border-color:var(--no)}.plain{background:#fff;color:var(--ink);border-color:var(--line)}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #1d6fd6;outline-offset:2px}
+  form{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input,select{font:16px Rubik,sans-serif;padding:8px 12px;border-radius:10px;border:2px solid var(--line);background:#fff;color:var(--ink)}
+  input{flex:1;min-width:220px;direction:ltr;text-align:left}
+  .empty{color:var(--soft);margin:4px 0}
+  .msg{min-height:1.4em;margin:0;color:var(--gold-hi);text-align:center}
+  .gate{text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <header><img src="icons/icon-192.png" alt=""><h1>ניהול גישה</h1><a href="./">חזרה לאי</a></header>
+  <p class="msg" id="msg" role="status"></p>
+  <div id="app"><section class="gate"><p>רגע…</p></section></div>
+</main>
+<script src="js/supabase.umd.js"></script>
+<script>
+// admin.html - Jewish Island's keeper: who asked to come in (approve / turn down), addresses approved ahead of time, and who is in.
+// The same sign-in as the island (one session on this site); the database lets only an admin read or change the list
+// (access_list / approve_email / reject_request / remove_email in אתר\supabase-setup.sql). Built by mk-site.js, which fills these in.
+(()=>{
+const CFG={url:"https://qwzscebdchcgqmhdnrnk.supabase.co",key:"sb_publishable_s1h7hO7Ckik_1be0fgaaeA_JlM85c0M"};
+const $app=document.getElementById('app'),$msg=document.getElementById('msg');
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const say=t=>{$msg.textContent=t||'';};
+if(!window.supabase||CFG.url.indexOf('__')===0){$app.innerHTML='<section class="gate"><p>האתר עוד לא מחובר למסד הנתונים.</p></section>';return;}
+const sb=window.supabase.createClient(CFG.url,CFG.key,{auth:{persistSession:true,autoRefreshToken:true,flowType:'pkce',storageKey:'ji-auth'}});
+let me='';
+const when=t=>{try{return new Date(t).toLocaleDateString('he-IL',{day:'numeric',month:'numeric',year:'2-digit'})+' '+new Date(t).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});}catch(e){return '';}};
+async function draw(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session){$app.innerHTML='<section class="gate"><p>צריך להיכנס קודם לאי עם חשבון Google.</p><p><a href="./">לכניסה</a></p></section>';return;}
+  me=String(session.user.email||'').toLowerCase();
+  const r=await sb.rpc('access_list');
+  if(r.error){$app.innerHTML='<section class="gate"><p>'+(r.error.code==='42501'?'הדף הזה למנהלי האי בלבד.':'אין חיבור לאינטרנט. רעננו את הדף.')+'</p></section>';return;}
+  const reqs=r.data.requests||[],pend=reqs.filter(q=>q.status==='pending'),rej=reqs.filter(q=>q.status==='rejected'),al=r.data.allowed||[];
+  const req=(q,btns)=>'<div class="row"><div class="who"><b>'+esc(q.name||'(בלי שם)')+'</b><span>'+esc(q.email)+'</span> · '+esc(when(q.at))+'</div>'+btns+'</div>';
+  $app.innerHTML=
+    '<section><h2>בקשות ממתינות'+(pend.length?' ('+pend.length+')':'')+'</h2>'+(pend.length?pend.map(q=>req(q,
+      '<button class="ok" data-a="ok" data-e="'+esc(q.email)+'">אישור</button><button class="no" data-a="no" data-u="'+esc(q.user_id)+'">דחייה</button>')).join(''):'<p class="empty">אין בקשות חדשות.</p>')+'</section>'+
+    '<section><h2>הוספת חשבון מראש</h2><p class="empty">מי שהכתובת שלו כאן נכנס מיד, בלי לחכות לאישור.</p>'+
+      '<form id="add"><input type="email" id="em" placeholder="name@gmail.com" autocomplete="off" required aria-label="כתובת Google">'+
+      '<select id="rl" aria-label="תפקיד"><option value="player">משתתף</option><option value="admin">מנהל</option></select><button class="ok" type="submit">הוספה</button></form></section>'+
+    '<section><h2>מי נכנס לאי ('+al.length+')</h2>'+al.map(a=>'<div class="row"><div class="who"><span>'+esc(a.email)+'</span></div>'+
+      (a.role==='admin'?'<span class="tag">מנהל</span>':'')+(a.email===me?'':'<button class="plain" data-a="rm" data-e="'+esc(a.email)+'">הסרה</button>')+'</div>').join('')+'</section>'+
+    (rej.length?'<section><h2>בקשות שנדחו</h2>'+rej.map(q=>req(q,'<button class="plain" data-a="ok" data-e="'+esc(q.email)+'">אישור בכל זאת</button>')).join('')+'</section>':'');
+}
+async function act(p,okMsg){say('רגע…');const r=await p;if(r.error){say(r.error.code==='22023'?'הכתובת לא נראית תקינה':'משהו השתבש, נסו שוב');return;}say(okMsg);await draw();}
+$app.addEventListener('click',e=>{const b=e.target.closest('button[data-a]');if(!b)return;const a=b.dataset.a;
+  if(a==='ok')act(sb.rpc('approve_email',{p_email:b.dataset.e,p_role:'player'}),'אושר ✓ '+b.dataset.e);
+  else if(a==='no')act(sb.rpc('reject_request',{p_user:b.dataset.u}),'הבקשה נדחתה');
+  else if(a==='rm'&&confirm('להסיר את '+b.dataset.e+' מהאי?'))act(sb.rpc('remove_email',{p_email:b.dataset.e}),'הוסר: '+b.dataset.e);});
+$app.addEventListener('submit',e=>{e.preventDefault();const em=document.getElementById('em').value.trim(),rl=document.getElementById('rl').value;if(!em)return;
+  act(sb.rpc('approve_email',{p_email:em,p_role:rl}),'נוסף ✓ '+em);});
+draw().catch(()=>{$app.innerHTML='<section class="gate"><p>אין חיבור לאינטרנט. רעננו את הדף.</p></section>';});
+})();
+</script>
+</body>
+</html>
