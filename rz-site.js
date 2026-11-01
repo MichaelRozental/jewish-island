@@ -61,7 +61,7 @@ function gateDraw(){if(opened&&gstate!=='entering')return;if(!gateEl){if(!docume
     gateEl.addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(!b)return;const a=b.dataset.g;
       if(a==='in')SITE.signIn();else if(a==='out')SITE.signOut();else if(a==='retry')gateCheck(true);});}
   const u=user,m=(u&&u.user_metadata)||{},first=String(m.full_name||m.name||'').split(' ')[0],mail=u&&u.email?'<p class="who">'+esc(u.email)+'</p>':'';
-  const head='<img src="icons/icon-192.png" alt=""><h1>Jewish Island</h1>',err='<p class="e" role="alert">'+esc(note)+'</p>';
+  const head='<img src="icons/isle-192.png" alt=""><h1>Jewish Island</h1>',err='<p class="e" role="alert">'+esc(note)+'</p>';
   let body;
   if(gstate==='loading')body='<div class="spin" aria-label="רגע"></div>';
   else if(gstate==='entering')body='<div class="spin" aria-hidden="true"></div><p class="s">נכנסים לאי…</p>';
