@@ -105,9 +105,9 @@ async function load(){
   const j=ls('ji-join');
   if(j){ls('ji-join',null);const r=await sb.rpc('join_world',{p_code:j});
     if(r.error)note=/fetch|network/i.test(String(r.error.message))?'אין חיבור לאינטרנט, נסו שוב':'קישור ההזמנה כבר לא בתוקף. בקשו קישור חדש ממי ששלח אותו.';else{ls('ji-world',r.data);note='';}}
-  const r=await sb.from('members').select('role,world_id,worlds(name)').eq('user_id',user.id);
+  const r=await sb.from('members').select('role,name,world_id,worlds(name)').eq('user_id',user.id);
   if(r.error){state='error';changed();return;}
-  worlds=r.data.map(m=>({id:m.world_id,name:(m.worlds&&m.worlds.name)||'',role:m.role})).sort((a,b)=>a.name.localeCompare(b.name,'he'));
+  worlds=r.data.map(m=>({id:m.world_id,name:(m.worlds&&m.worlds.name)||'',role:m.role,me:m.name||''})).sort((a,b)=>a.name.localeCompare(b.name,'he'));
   const w=worlds.find(x=>x.id===ls('ji-world'))||(worlds.length===1?worlds[0]:null);
   if(w)enter(w);else{state='pick';changed();}}
 const reload=()=>load().catch(()=>{state='error';changed();});
@@ -197,5 +197,26 @@ function colRef(c){return {id:c,doc:id=>docRef(c+'/'+(id==null?newId():id)),
   async get(){await gate(c);const rows=chk(await sel(c));return colSnap({rows:new Map(rows.map(r=>[r.id,r]))});},
   onSnapshot(cb,err){const w=watch(c);w.col.add(cb);if(err)w.errs.add(err);if(w.loaded)call(cb,colSnap(w));return()=>{w.col.delete(cb);};}};}
 const DB={doc:docRef,collection:colRef};
-window.claude=window.claude||{};window.claude.use=async n=>n==='db'?DB:null;
+
+// ---- the world's live channel (2026-11-06, the user: "כן, תתחיל עם שלב ראשון ושם מעל הראש"): who of the world is on the island now,
+// and where - a private channel per world, "world:<id>", for its approved members only (supabase-setup.sql, live_world). Its presence
+// says who is here and his name (the name over his character: his own in the world, members.name, else his first name from Google);
+// its broadcast carries where each one is. The game (MP) sends only while someone else is here, a few times a second while he moves.
+let live=null;
+function myName(){const m=(user&&user.user_metadata)||{};
+  return String((world&&world.me)||m.given_name||String(m.full_name||m.name||'').trim().split(/\s+/)[0]||String((user&&user.email)||'').split('@')[0]||'').slice(0,24);}
+function liveRoom(){if(live)return live;if(!world||!user)return null;
+  const key=user.id.slice(0,8)+'-'+newId().slice(0,6),name=myName(),peers=new Map(),fp=new Set(),fm=new Set();let ch=null,on=false;
+  const tell=()=>{const L=[...peers.values()];for(const f of fp)call(f,L);};
+  const sync=()=>{const S=ch.presenceState();peers.clear();for(const k in S){if(k===key)continue;const p=S[k]&&S[k][0];if(p)peers.set(k,{id:k,name:String(p.n||'').slice(0,24)});}tell();};
+  try{const a=sb.realtime&&sb.realtime.setAuth&&sb.realtime.setAuth();if(a&&a.catch)a.catch(()=>{});}catch(e){}
+  ch=sb.channel('world:'+world.id,{config:{private:true,presence:{key},broadcast:{self:false}}});
+  ch.on('presence',{event:'sync'},sync).on('broadcast',{event:'s'},m=>{const p=m&&m.payload;if(!p||!p.id||p.id===key)return;for(const f of fm)call(f,p);})
+    .subscribe(st=>{if(st==='SUBSCRIBED'){on=true;Promise.resolve(ch.track({n:name})).catch(()=>{});}
+      else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT'||st==='CLOSED'){on=false;if(peers.size){peers.clear();tell();}}});
+  live={me:()=>({id:key,name}),ready:()=>on,peers:()=>[...peers.values()],
+    onPeers(f){fp.add(f);call(f,[...peers.values()]);return()=>fp.delete(f);},on(f){fm.add(f);return()=>fm.delete(f);},
+    send(p){if(!on||!peers.size)return false;Promise.resolve(ch.send({type:'broadcast',event:'s',payload:Object.assign({},p,{id:key})})).catch(()=>{});return true;}};
+  return live;}
+window.claude=window.claude||{};window.claude.use=async n=>n==='db'?DB:n==='room'?(await whenWorld(),liveRoom()):null;
 })();
