@@ -206,7 +206,7 @@ let live=null;
 function myName(){const m=(user&&user.user_metadata)||{};
   return String((world&&world.me)||m.given_name||String(m.full_name||m.name||'').trim().split(/\s+/)[0]||String((user&&user.email)||'').split('@')[0]||'').slice(0,24);}
 function liveRoom(){if(live)return live;if(!world||!user)return null;
-  const key=user.id.slice(0,8)+'-'+newId().slice(0,6),name=myName(),peers=new Map(),fp=new Set(),fm=new Set();let ch=null,on=false;
+  const key=user.id.slice(0,8)+'-'+newId().slice(0,6),peers=new Map(),fp=new Set(),fm=new Set();let ch=null,on=false,name=myName();
   const tell=()=>{const L=[...peers.values()];for(const f of fp)call(f,L);};
   const sync=()=>{const S=ch.presenceState();peers.clear();for(const k in S){if(k===key)continue;const p=S[k]&&S[k][0];if(p)peers.set(k,{id:k,name:String(p.n||'').slice(0,24)});}tell();};
   try{const a=sb.realtime&&sb.realtime.setAuth&&sb.realtime.setAuth();if(a&&a.catch)a.catch(()=>{});}catch(e){}
@@ -216,7 +216,13 @@ function liveRoom(){if(live)return live;if(!world||!user)return null;
       else if(st==='CHANNEL_ERROR'||st==='TIMED_OUT'||st==='CLOSED'){on=false;if(peers.size){peers.clear();tell();}}});
   live={me:()=>({id:key,name}),ready:()=>on,peers:()=>[...peers.values()],
     onPeers(f){fp.add(f);call(f,[...peers.values()]);return()=>fp.delete(f);},on(f){fm.add(f);return()=>fm.delete(f);},
-    send(p){if(!on||!peers.size)return false;Promise.resolve(ch.send({type:'broadcast',event:'s',payload:Object.assign({},p,{id:key})})).catch(()=>{});return true;}};
+    send(p){if(!on||!peers.size)return false;Promise.resolve(ch.send({type:'broadcast',event:'s',payload:Object.assign({},p,{id:key})})).catch(()=>{});return true;},
+    // (2026-11-06, v240: one's own name over one's head, from the game's help - kept in the world (members.name: the site's rules let each
+    // change his own), told at once to whoever is here; an empty one goes back to the first name from Google)
+    async setName(n){n=String(n||'').replace(/\s+/g,' ').trim().slice(0,24);
+      const r=await sb.from('members').update({name:n||null}).eq('world_id',world.id).eq('user_id',user.id);
+      if(r&&r.error)return {ok:false,error:r.error.message||String(r.error)};
+      world.me=n;name=myName();if(on)Promise.resolve(ch.track({n:name})).catch(()=>{});return {ok:true,name};}};
   return live;}
 window.claude=window.claude||{};window.claude.use=async n=>n==='db'?DB:n==='room'?(await whenWorld(),liveRoom()):null;
 })();
