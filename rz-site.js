@@ -80,6 +80,13 @@ let swTok=null;
 function swToken(t){swTok=t||null;const sw='serviceWorker' in navigator?navigator.serviceWorker:null;if(!sw)return Promise.resolve(false);
   return Promise.race([sw.ready.then(reg=>new Promise(res=>{const w=sw.controller||reg.active;if(!w){res(false);return;}
     const ch=new MessageChannel();ch.port1.onmessage=()=>res(true);w.postMessage({type:'token',token:swTok},[ch.port2]);})),sleep(4000).then(()=>false)]);}
+// (2026-11-08, "קיבלת את גרסה 250"): the worker gave this page from its keeping for want of a fresh pass, and a newer version came in
+// behind the fresh one - while still at the globe (its first 20 seconds), reloaded into it, once (not again within two minutes);
+// already further on, the next visit takes it
+if(PAGE==='game'&&'serviceWorker' in navigator)navigator.serviceWorker.addEventListener('message',ev=>{const d=ev.data||{};if(d.type!=='stale')return;
+  let last=0;try{last=+sessionStorage.getItem('rz-fresh')||0;}catch(e){}if(Date.now()-last<120000||performance.now()>20000)return;
+  try{sessionStorage.setItem('rz-fresh',String(Date.now()));}catch(e){}location.reload();});
+try{if(PAGE==='game'&&'serviceWorker' in navigator)navigator.serviceWorker.startMessages();}catch(e){}
 // (the door, once in: the worker set up and holding the pass, then the game. Without a worker the public stand-in would only send
 // him back here - after that once, it says so)
 async function toGame(){const sw='serviceWorker' in navigator?navigator.serviceWorker:null;let ok=false;
